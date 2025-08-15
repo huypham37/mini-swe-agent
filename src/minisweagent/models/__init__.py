@@ -76,6 +76,27 @@ def get_model_class(model_name: str) -> type:
         from minisweagent.models.anthropic import AnthropicModel
 
         return AnthropicModel
+    
+    # Check for explicit OpenAI model names
+    if any(s in model_name.lower() for s in ["gpt", "openai", "o1"]):
+        from minisweagent.models.openai_model import OpenAIModel
+
+        return OpenAIModel
+    
+    # Check if local OpenAI-compatible server is configured
+    if os.getenv("OPENAI_API_BASE") and "localhost" in os.getenv("OPENAI_API_BASE", ""):
+        from minisweagent.models.openai_model import OpenAIModel
+
+        return OpenAIModel
+    
+    # Check for common local model patterns
+    if any(s in model_name.lower() for s in ["qwen", "llama", "mistral", "phi", "gemma", "codestral", "deepseek"]):
+        # If local server is configured, use OpenAI model
+        if os.getenv("OPENAI_API_BASE"):
+            from minisweagent.models.openai_model import OpenAIModel
+
+            return OpenAIModel
+    
     from minisweagent.models.litellm_model import LitellmModel
 
     return LitellmModel

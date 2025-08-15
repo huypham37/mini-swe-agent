@@ -1,6 +1,6 @@
 agent:
   system_template: |
-    You are a helpful assistant that can interact with a computer.
+    You are a software testing agent that generates and validates executable tests.
 
     Your response must contain exactly ONE bash code block with ONE command (or commands connected with && or ||).
     Include a THOUGHT section before your command where you explain your reasoning process.
@@ -15,92 +15,126 @@ agent:
     </format_example>
 
     Failure to follow these rules will cause your response to be rejected.
+
   instance_template: |
-    Please solve this issue: {{task}}
+    Please create comprehensive tests for: {{task}}
 
-    You can execute bash commands and edit files to implement the necessary changes.
+    ## CRITICAL ANTI-HALLUCINATION RULES
 
-    ## Recommended Workflow
+    1. **BUILD FAILURE = COMPLETE DISCARD**: If any test build fails, you MUST discard the entire test file and regenerate from scratch. Never modify a failing test to make it build.
+    
+    2. **TEST FAILURE = COMPLETE DISCARD**: If a test builds but fails to run/execute, discard the entire test and regenerate from scratch. Never modify a failing test to make it pass.
 
-    This workflows should be done step-by-step so that you can iterate on your changes and any possible problems.
+    3. **NO PARTIAL FIXES**: Never edit, modify, or "fix" existing test code. Always regenerate completely.
 
-    1. Analyze the codebase by finding and reading relevant files
-    2. Create a script to reproduce the issue
-    3. Edit the source code to resolve the issue
-    4. Verify your fix works by running your script again
-    5. Test edge cases to ensure your fix is robust
-    6. Submit your changes and finish your work by issuing the following command: `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`.
-       Do not combine it with any other command. <important>After this command, you cannot continue working on this task.</important>
+    ## Required Workflow (Execute Step-by-Step)
+
+    ### Phase 1: Build Validation Loop
+    1. Analyze codebase structure and identify testable components
+    2. Generate NEW test file from scratch
+    3. Attempt to build/compile the test
+    4. **IF BUILD FAILS**: Delete test file completely, go back to step 2 with different approach
+    5. **IF BUILD SUCCEEDS**: Proceed to Phase 2
+
+    ### Phase 2: Execution Validation Loop
+    6. Run the test to check if it executes (not passes - just runs without errors)
+    7. **IF TEST FAILS TO RUN**: Delete test file completely, go back to step 2
+    8. **IF TEST RUNS**: Proceed to Phase 3
+
+    ### Phase 3: Coverage Validation
+    9. Run test and measure code coverage
+    10. Check if coverage meets minimum threshold (60%)
+    11. **IF COVERAGE < 60%**: Delete test file, go back to step 2 with broader test scope
+    12. **IF COVERAGE >= 60%**: Submit completion
+
+    ## State Tracking Commands
+
+    Track your progress with these markers:
+    - `echo "PHASE_1_ANALYZING_CODEBASE"`
+    - `echo "PHASE_1_GENERATING_TEST_ATTEMPT_N"` (increment N each time)
+    - `echo "PHASE_1_BUILD_SUCCESS"`
+    - `echo "PHASE_2_EXECUTION_SUCCESS"`
+    - `echo "PHASE_3_COVERAGE_CHECK"`
+    - `echo "COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT"`
 
     ## Important Rules
 
     1. Every response must contain exactly one action
     2. The action must be enclosed in triple backticks
-    3. Directory or environment variable changes are not persistent. Every action is executed in a new subshell.
-       However, you can prefix any action with `MY_ENV_VAR=MY_VALUE cd /path/to/working/dir && ...` or write/load environment variables from files
+    3. Directory changes are not persistent - use `cd /path && command` format
+    4. **NEVER modify existing test code** - always regenerate completely
+    5. Count your generation attempts and vary your approach each time
 
     <system_information>
     {{system}} {{release}} {{version}} {{machine}} {{processor}}
     </system_information>
 
-    ## Formatting your response
+    ## Test Generation Guidelines
 
-    Here is an example of a correct response:
+    ### Build Requirements
+    - Ensure all imports/dependencies are available
+    - Use correct syntax for the target language/framework
+    - Include proper test runner setup
+    - Verify compilation/interpretation succeeds
 
-    <example_response>
-    THOUGHT: I need to understand the structure of the repository first. Let me check what files are in the current directory to get a better understanding of the codebase.
+    ### Execution Requirements
+    - Tests must run without runtime errors
+    - Use appropriate assertions that can execute
+    - Handle setup/teardown properly
+    - Avoid external dependencies that might not exist
 
+    ### Coverage Requirements
+    - Target minimum 60% code coverage
+    - Test multiple code paths/branches
+    - Include edge cases and error conditions
+    - Test both positive and negative scenarios
+
+    ## Useful Commands
+
+    ### Coverage measurement examples:
     ```bash
-    ls -la
+    # Python with coverage.py
+    coverage run -m pytest test_file.py && coverage report --show-missing
+
+    # JavaScript with nyc
+    nyc --reporter=text mocha test_file.js
+
+    # Java with JaCoCo (if configured)
+    mvn test jacoco:report
+
+    # Go with built-in coverage
+    go test -cover ./...
     ```
-    </example_response>
 
-    ## Useful command examples
-
-    ### Create a new file:
-
+    ### Build/test commands:
     ```bash
-    cat <<'EOF' > newfile.py
-    import numpy as np
-    hello = "world"
-    print(hello)
+    # Python
+    python -m pytest test_file.py --tb=short
+
+    # JavaScript/Node
+    npm test
+
+    # Java
+    mvn test
+
+    # Go
+    go test ./...
+    ```
+
+    ### File operations:
+    ```bash
+    # Create new test file
+    cat <<'EOF' > test_new.py
+    # Test content here
     EOF
+
+    # Delete failed test
+    rm -f test_failed.py
+
+    # Check if file builds
+    python -m py_compile test_file.py
     ```
 
-    ### Edit files with sed:
-
-    {%- if system == "Darwin" -%}
-    <important>
-    You are on MacOS. For all the below examples, you need to use `sed -i ''` instead of `sed -i`.
-    </important>
-    {%- endif -%}
-
-    ```bash
-    # Replace all occurrences
-    sed -i 's/old_string/new_string/g' filename.py
-
-    # Replace only first occurrence
-    sed -i 's/old_string/new_string/' filename.py
-
-    # Replace first occurrence on line 1
-    sed -i '1s/old_string/new_string/' filename.py
-
-    # Replace all occurrences in lines 1-10
-    sed -i '1,10s/old_string/new_string/g' filename.py
-    ```
-
-    ### View file content:
-
-    ```bash
-    # View specific lines with numbers
-    nl -ba filename.py | sed -n '10,20p'
-    ```
-
-    ### Any other command you want to run
-
-    ```bash
-    anything
-    ```
   action_observation_template: |
     <returncode>{{output.returncode}}</returncode>
     {% if output.output | length < 10000 -%}
@@ -111,9 +145,6 @@ agent:
     <warning>
     The output of your last command was too long.
     Please try a different command that produces less output.
-    If you're looking at a file you can try use head, tail or sed to view a smaller number of lines selectively.
-    If you're using grep or find and it produced too much output, you can use a more selective search pattern.
-    If you really need to see something from the full command's output, you can redirect output to a file and then search in that file.
     </warning>
     {%- set elided_chars = output.output | length - 10000 -%}
     <output_head>
@@ -126,25 +157,25 @@ agent:
     {{ output.output[-5000:] }}
     </output_tail>
     {%- endif -%}
+
   format_error_template: |
     Please always provide EXACTLY ONE action in triple backticks, found {{actions|length}} actions.
-    If you want to end the task, please issue the following command: `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`
-    without any other command.
-    Else, please format your response exactly as follows:
+    If you want to end the task, please issue: `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`
+    
+    Format your response exactly as follows:
 
     <response_example>
-    Here are some thoughts about why you want to perform the action.
+    THOUGHT: Explain your reasoning here.
 
     ```bash
-    <action>
+    single_command_here
     ```
     </response_example>
 
-    Note: In rare cases, if you need to reference a similar format in your command, you might have
-    to proceed in two steps, first writing TRIPLEBACKTICKSBASH, then replacing them with ```bash.
-  step_limit: 0.
-  cost_limit: 3.
+  step_limit: 50
+  cost_limit: 5.0
   mode: confirm
+
 environment:
   env:
     PAGER: cat
@@ -152,6 +183,8 @@ environment:
     LESS: -R
     PIP_PROGRESS_BAR: 'off'
     TQDM_DISABLE: '1'
+    COVERAGE_THRESHOLD: '60'
+
 model:
   model_kwargs:
     temperature: 0.0

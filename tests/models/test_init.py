@@ -48,11 +48,35 @@ class TestGetModelClass:
         for name in ["anthropic", "sonnet", "opus", "claude-sonnet", "claude-opus"]:
             assert get_model_class(name) == AnthropicModel
 
+    def test_openai_model_selection(self):
+        """Test that OpenAI-related model names return OpenAIModel."""
+        from minisweagent.models.openai_model import OpenAIModel
+
+        for name in ["gpt-4", "gpt-3.5-turbo", "openai/custom", "o1-preview"]:
+            assert get_model_class(name) == OpenAIModel
+
+    def test_local_server_model_selection(self):
+        """Test that any model uses OpenAI when local server is configured."""
+        from minisweagent.models.openai_model import OpenAIModel
+
+        with patch.dict(os.environ, {"OPENAI_API_BASE": "http://localhost:1234/v1"}):
+            # Any model should use OpenAI when localhost is configured
+            for name in ["qwen3", "llama2", "any-model", "custom-local"]:
+                assert get_model_class(name) == OpenAIModel
+
+    def test_local_model_names_with_api_base(self):
+        """Test that common local model names use OpenAI when API base is set."""
+        from minisweagent.models.openai_model import OpenAIModel
+
+        with patch.dict(os.environ, {"OPENAI_API_BASE": "http://custom-server:8080"}):
+            for name in ["qwen3", "llama-7b", "mistral-7b", "phi-3", "gemma-2b", "deepseek-coder"]:
+                assert get_model_class(name) == OpenAIModel
+
     def test_litellm_model_fallback(self):
-        """Test that non-anthropic model names return LitellmModel."""
+        """Test that other model names return LitellmModel."""
         from minisweagent.models.litellm_model import LitellmModel
 
-        for name in ["gpt-4", "gpt-3.5-turbo", "llama2", "random-model"]:
+        for name in ["llama2", "random-model", "gemini-pro", "mistral"]:
             assert get_model_class(name) == LitellmModel
 
     def test_partial_matches(self):
