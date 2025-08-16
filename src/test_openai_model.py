@@ -77,13 +77,21 @@ def test_cost_calculation():
     model = OpenAIModel(model_name="gpt-3.5-turbo", cost_per_1k_input_tokens=0.001, cost_per_1k_output_tokens=0.002)
     with patch("requests.post") as mock_post:
         mock_response = MagicMock()
+        mock_response.status_code = 200
         mock_response.json.return_value = {
+            "choices": [
+                {
+                    "message": {
+                        "content": "Test response"
+                    }
+                }
+            ],
             "usage": {"prompt_tokens": 100, "completion_tokens": 50}
         }
         mock_post.return_value = mock_response
         result = model.query([{"role": "user", "content": "Hello"}])
         assert model.cost > 0.0
-        assert model.cost > 0.1  # Should be ~0.15 based on 100+50 tokens
+        assert model.cost == 0.0002  # 100*0.001/1000 + 50*0.002/1000 = 0.0001 + 0.0001
 
 def test_get_template_vars():
     model = OpenAIModel(model_name="gpt-3.5-turbo")
