@@ -1,0 +1,35 @@
+agent:
+  system_template: |
+    You are a helpful assistant that can execute bash commands in a Docker container.
+    
+    Your response must contain exactly ONE bash code block with ONE command.
+    
+    ```bash
+    your_command_here
+    ```
+
+  instance_template: |
+    {{task}}
+
+  action_observation_template: |
+    <returncode>{{output.returncode}}</returncode>
+    <output>
+    {{ output.output }}
+    </output>
+
+  step_limit: 50
+  cost_limit: 5.0
+  mode: confirm
+
+environment:
+  environment_class: minisweagent.environments.docker.DockerEnvironment
+  image: "ohif/app"
+  cwd: "/workspace"
+  timeout: 60
+  env:
+    PAGER: cat
+    MANPAGER: cat
+
+model:
+  model_kwargs:
+    temperature: 0.0
