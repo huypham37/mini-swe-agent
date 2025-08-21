@@ -124,3 +124,4 @@ The default agent follows a simple loop:
 - Code should be hackable and readable at a glance
 - Focus on the language model capabilities rather than agent scaffolding
 - Everything should be easily sandboxable and deployable
+- how to stash all changes
