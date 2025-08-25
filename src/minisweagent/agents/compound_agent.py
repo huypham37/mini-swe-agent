@@ -6,14 +6,6 @@ from typing import Optional, Callable
 from enum import Enum
 from minisweagent.agents.default import AgentConfig, DefaultAgent, LimitsExceeded, NonTerminatingException, Submitted
 
-
-class Status(Enum):
-    INACTIVE = "inactive"
-    ACTIVE = "active"
-    COMPLETED = "completed"
-    FAILED = "failed"
-
-
 class AgentType(Enum):
     PLANNER = "Planner"
     SUPERVISOR = "Supervisor"
@@ -27,13 +19,10 @@ class AgentCoordinatoor(DefaultAgent):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.completed_agents = {}  # supervisor_id -> [completed_agent_results]
-        self.supervisor_config = {}  # supervisor_id -> supervisor_config
         self.active_supervisors = {}
+        self.supervisor_map = {}
+        self.child_count_map = {}
 
-    # TODO: How do the supervisors know which task they are working on?
-    # NOTE: If there are more than 1 layer of supervisor, after the executor
-    # submit to their supervisor, then these supervisor dont know their supervisor to
-    # create. So I am thinking of making a tree.
     def on_child_completed(self, supervisor_id: str, result: str):
         """generate supervisor agent when child completed"""
         if supervisor_id not in self.completed_agents:
@@ -41,11 +30,19 @@ class AgentCoordinatoor(DefaultAgent):
 
         self.completed_agents[supervisor_id].append(result)
 
-        # Check if all children submitted
-        expected_count = len(self.supervisor_config[supervisor_id])
+        expected_count = self.child_count_map[supervisor_id]
         if len(self.completed_agents[supervisor_id]) == expected_count:
             supervisor = AgentFactory.generate_supervisor()
+            supervisor.my_supervisor = self.supervisor_map.get(supervisor_id)
+            supervisor.set_completion_callback(self.on_child_completed)
             self.active_supervisors[supervisor_id] = supervisor
+            status, task_result = supervisor.analyze_results(result)
+            if status == "Submitted":
+                supervisor.complete_task(task_result)
+                self.on_child_completed(supervisor.my_supervisor, task_result)
+            else:
+                print(f"Supervisor {supervisor_id} failed with error: {task_result}")
+        
 
     def generate_agent(self, agent_type: AgentType):
         if agent_type == AgentType.SUPERVISOR:
@@ -64,10 +61,13 @@ class AgentCoordinatoor(DefaultAgent):
         self.add_message("user", self.render_template(self.config.instance_template))
 
         task_desc = self.query()
-        self.supervisor_config = Utils.parse_task_structure(task_desc)
+        
+        # Build maps from task_desc
+        self.supervisor_map = Utils.build_map(task_desc)
+        self.child_count_map = Utils.build_child_count_map(task_desc)
         depth = len(task_desc) - 1
 
-        # Distritbute task to small agent and let them work.
+        # Distribute task to small agents and let them work.
         for item in task_desc[f"level_{depth}"]:
             executor = AgentFactory.generate_executor()
             executor.my_supervisor = item["supervisor"]
@@ -90,7 +90,6 @@ class SupervisorAgent(DefaultAgent):
         super().__init__(*args, **kwargs)
         self.id = generate_unique_id()
         self.agent_type = AgentType.SUPERVISOR
-        self.status = Status.INACTIVE
         self.completion_callback: Optional[Callable[[str, str], None]] = None
         self.my_supervisor = None
         self.child_results = []
@@ -99,23 +98,19 @@ class SupervisorAgent(DefaultAgent):
         """Set a callback when this agent completes"""
         self.completion_callback = callback
 
-    def analyze_results(self, results) -> tuple[str, str]:
+    def analyze_results(self, results, **kwargs) -> tuple[str, str]:
         """Analyze child results without execution loop"""
         super().extra_template_vars |= {"task": results, **kwargs}
         super().add_message("system", self.render_template(self.config.system_template))
         super().add_message("user", self.render_template(self.config.instance_template))
-
         try:
             response = super().query()
-            self.status = Status.COMPLETED
             return "Submitted", response["content"]
         except Exception as e:
-            self.status = Status.FAILED
             return "Failed", str(e)
 
     def complete_task(self, result: str | None = None):
         """Complete this agent's task and notify supervisor"""
-        self.status = Status.COMPLETED
         if self.completion_callback and self.my_supervisor is not None:
             if result is None:
                 result = "No result returned"
@@ -127,7 +122,6 @@ class ExecutorAgent(DefaultAgent):
         super().__init__(*args, **kwargs)
         self.id = generate_unique_id()
         self.agent_type = AgentType.EXECUTOR
-        self.status = Status.INACTIVE
         self.completion_callback: Optional[Callable[[str, str], None]] = None
         self.my_supervisor = None
 
@@ -180,6 +174,20 @@ class Utils:
                         parent_map[item["id"]] = item["supervisor"]
 
         return parent_map
+
+    @staticmethod
+    def build_child_count_map(task_desc: dict) -> dict:
+        """Build a child count map: {supervisor_id: number_of_children}"""
+        child_count = {}
+
+        for level_key in task_desc:
+            if level_key.startswith("level_"):
+                for item in task_desc[level_key]:
+                    if "supervisor" in item:
+                        supervisor_id = item["supervisor"]
+                        child_count[supervisor_id] = child_count.get(supervisor_id, 0) + 1
+
+        return child_count
 
 
 # {
