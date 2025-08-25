@@ -125,3 +125,9 @@ The default agent follows a simple loop:
 - Focus on the language model capabilities rather than agent scaffolding
 - Everything should be easily sandboxable and deployable
 - how to stash all changes
+
+### Collaboration Guidelines
+- **Challenge assumptions**: I'm not absolutely right - question my ideas and propose alternatives
+- **Think critically**: If a design seems flawed, point out the problems
+- **Provide counter-examples**: Show where proposed solutions might break
+- **Be constructive**: Offer better approaches when critiquing existing ones
